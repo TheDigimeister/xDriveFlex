@@ -42,7 +42,7 @@ class PID:
         return output
 
 # PID controllers for lateral and angular velocity
-lateral_pid = PID(0.1, 0.0, 0.0)  # Tune these values for your robot
+lateral_pid = PID(12, 0.0, 0.001)  # Tune these values for your robot
 angular_pid = PID(1, 0.0, 0.0)  # Tune these values for your robot
 
 def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y, target_heading_deg, dt):
@@ -50,7 +50,7 @@ def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y
     dx = target_x - current_x
     dy = target_y - current_y
     distance_error = math.sqrt(dx**2 + dy**2)
-    angle_to_target = math.atan2(dx, dy)
+    angle_to_target = math.atan2(dy, dx)
     heading_rad = current_heading_deg * math.pi / 180.0
     # Transform error to robot-centric frame
     forward_error = distance_error * math.cos(angle_to_target - heading_rad)
@@ -73,7 +73,10 @@ def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y
     turn_cmd = angular_pid.update(heading_error, dt)
     turn_cmd = s_curve(turn_cmd, max_vel=100.0, accel=0.05)
 
-    return forward_cmd, strafe_cmd, turn_cmd
+    if heading_error < 1 and distance_error < 1: 
+        return 0, 0, 0
+    else:
+        return forward_cmd, strafe_cmd, turn_cmd
 
 # Brain should be defined by default
 brain = Brain()
@@ -109,8 +112,8 @@ dt = 0.02  # 20 ms
 while True:
     if auton_mode:
         # Autonomous mode: move to target position and heading
-        target_x = 24  # Example target X (in)
-        target_y = 0  # Example target Y (in)
+        target_x = 10  # Example target X (in)
+        target_y = 5  # Example target Y (in)
         target_heading = 90  # Example target heading (deg)
 
         heading_deg = brain_inertial.heading()
