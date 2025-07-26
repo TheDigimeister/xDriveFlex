@@ -39,22 +39,26 @@ class PID:
         derivative = (error - self.prev_error) / dt if dt > 0 else 0
         output = self.kP * error + self.kI * self.integral + self.kD * derivative
         self.prev_error = error
-        return output
+        if abs(error) < 1:
+            return 0
+        else:
+            return output
 
 # PID controllers for lateral and angular velocity
-lateral_pid = PID(12, 0.0, 0.001)  # Tune these values for your robot
+lateral_pid = PID(12.0, 0.0, 0.0)  # Tune these values for your robot
 angular_pid = PID(1, 0.0, 0.0)  # Tune these values for your robot
 
 def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y, target_heading_deg, dt):
     # Calculate field-centric error
-    dx = target_x - current_x
-    dy = target_y - current_y
+    dx = target_x - current_x  # x is forward
+    dy = target_y - current_y  # y is strafe left
     distance_error = math.sqrt(dx**2 + dy**2)
     angle_to_target = math.atan2(dy, dx)
     heading_rad = current_heading_deg * math.pi / 180.0
-    # Transform error to robot-centric frame
-    forward_error = distance_error * math.cos(angle_to_target - heading_rad)
-    strafe_error = distance_error * math.sin(angle_to_target - heading_rad)
+
+    # Transform error to robot-centric frame (standard field-centric math)
+    forward_error = dx * math.cos(heading_rad) + dy * math.sin(heading_rad)
+    strafe_error = -dx * math.sin(heading_rad) + dy * math.cos(heading_rad)
 
     # S-curve motion profile (sigmoid)
     def s_curve(error, max_vel=100.0, accel=0.05):
@@ -64,6 +68,7 @@ def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y
     # PID outputs for translation
     forward_cmd = lateral_pid.update(forward_error, dt)
     strafe_cmd = lateral_pid.update(strafe_error, dt)
+
     # Apply s-curve profile to limit velocity
     forward_cmd = s_curve(forward_cmd)
     strafe_cmd = s_curve(strafe_cmd)
@@ -71,29 +76,26 @@ def move_to_target(current_x, current_y, current_heading_deg, target_x, target_y
     # PID output for rotation
     heading_error = (target_heading_deg - current_heading_deg + 180) % 360 - 180  # Shortest path
     turn_cmd = angular_pid.update(heading_error, dt)
-    turn_cmd = s_curve(turn_cmd, max_vel=100.0, accel=0.05)
+    turn_cmd = s_curve(turn_cmd)
 
-    if heading_error < 1 and distance_error < 1: 
-        return 0, 0, 0
-    else:
-        return forward_cmd, strafe_cmd, turn_cmd
+    return forward_cmd, strafe_cmd, turn_cmd
 
 # Brain should be defined by default
 brain = Brain()
 
 # Robot configuration code
 brain_inertial = Inertial()  # VEX IQ uses GyroSensor for heading
-front_left_motor = Motor(Ports.PORT1)
-front_right_motor = Motor(Ports.PORT6, True)
-back_left_motor = Motor(Ports.PORT7)
-back_right_motor = Motor(Ports.PORT12, True)
+front_left_motor = Motor(Ports.PORT6)
+front_right_motor = Motor(Ports.PORT12, True)
+back_left_motor = Motor(Ports.PORT1)
+back_right_motor = Motor(Ports.PORT7, True)
 controller = Controller()
 
 brain_inertial.calibrate()
 while brain_inertial.is_calibrating(): wait(50)
 
 # Begin project code
-auton_mode = True  # Set to True for autonomous mode
+auton_mode = False  # Set to True for autonomous mode
 # Set the deadband variable
 dead_band = 5
 
@@ -112,9 +114,9 @@ dt = 0.02  # 20 ms
 while True:
     if auton_mode:
         # Autonomous mode: move to target position and heading
-        target_x = 10  # Example target X (in)
-        target_y = 5  # Example target Y (in)
-        target_heading = 90  # Example target heading (deg)
+        target_x = 7  # Example target X (in)
+        target_y = -7  # Example target Y (in)
+        target_heading = 180  # Example target heading (deg)
 
         heading_deg = brain_inertial.heading()
         heading_rad = heading_deg * math.pi / 180.0
@@ -125,17 +127,22 @@ while True:
         bl = back_left_motor.velocity()
         br = back_right_motor.velocity()
 
-        max_speed_in_s = (max_rpm / 60.0) * wheel_circumference
-        forward = (fl + fr + bl + br) * 0.75 / 60.0 * wheel_circumference
-        strafe = (fl + br - fr - bl) * 0.75 / 60.0 * wheel_circumference
-        forward_in_s = forward / 100.0 * max_speed_in_s
-        strafe_in_s = strafe / 100.0 * max_speed_in_s
+        # Convert RPM to inches/second for each motor
+        fl_in_s = (fl / 60.0) * wheel_circumference
+        fr_in_s = (fr / 60.0) * wheel_circumference
+        bl_in_s = (bl / 60.0) * wheel_circumference
+        br_in_s = (br / 60.0) * wheel_circumference
 
-        dx = forward * math.cos(heading_rad) + strafe * math.sin(heading_rad)
-        dy = -forward * math.sin(heading_rad) + strafe * math.cos(heading_rad)
+        # X-drive kinematics: forward and strafe in inches/second
+        forward_in_s = (fl_in_s + fr_in_s + bl_in_s + br_in_s) / 4.0
+        strafe_in_s = (fl_in_s + br_in_s - fr_in_s - bl_in_s) / 4.0
 
-        x += dx * dt
-        y += dy * dt
+        # Standard field-centric odometry update (x: forward, y: strafe left)
+        x_dot = forward_in_s * math.cos(heading_rad) - strafe_in_s * math.sin(heading_rad)
+        y_dot = forward_in_s * math.sin(heading_rad) + strafe_in_s * math.cos(heading_rad)
+
+        x += x_dot * dt  # x is forward
+        y += y_dot * dt  # y is strafe left
 
         # Call motion profile PID
         forward_cmd, strafe_cmd, turn_cmd = move_to_target(x, y, heading_deg, target_x, target_y, target_heading, dt)
@@ -197,23 +204,28 @@ while True:
         back_left_motor.spin(FORWARD)
         back_right_motor.spin(FORWARD)
 
-        # Odometry update
+        # Odometry update (same as autonomous mode)
         fl = front_left_motor.velocity()
         fr = front_right_motor.velocity()
         bl = back_left_motor.velocity()
         br = back_right_motor.velocity()
 
-        max_speed_in_s = (max_rpm / 60.0) * wheel_circumference
-        forward = (fl + fr + bl + br) * 0.75 / 60.0 * wheel_circumference
-        strafe = (fl + br - fr - bl) * 0.75 / 60.0 * wheel_circumference
-        forward_in_s = forward / 100.0 * max_speed_in_s
-        strafe_in_s = strafe / 100.0 * max_speed_in_s
+        # Convert RPM to inches/second for each motor
+        fl_in_s = (fl / 60.0) * wheel_circumference
+        fr_in_s = (fr / 60.0) * wheel_circumference
+        bl_in_s = (bl / 60.0) * wheel_circumference
+        br_in_s = (br / 60.0) * wheel_circumference
 
-        dx = forward * math.cos(heading_rad) + strafe * math.sin(heading_rad)
-        dy = -forward * math.sin(heading_rad) + strafe * math.cos(heading_rad)
+        # X-drive kinematics: forward and strafe in inches/second
+        forward_in_s = (fl_in_s + fr_in_s + bl_in_s + br_in_s) / 4.0
+        strafe_in_s = (fl_in_s + br_in_s - fr_in_s - bl_in_s) / 4.0
 
-        x += dx * dt
-        y += dy * dt
+        # Standard field-centric odometry update
+        x_dot = forward_in_s * math.cos(heading_rad) + strafe_in_s * math.sin(heading_rad)
+        y_dot = -forward_in_s * math.sin(heading_rad) + strafe_in_s * math.cos(heading_rad)
+
+        x += x_dot * dt  # x is forward
+        y += y_dot * dt  # y is strafe left
 
         # Print to brain display
         brain.screen.clear_screen()
