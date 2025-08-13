@@ -85,10 +85,10 @@ brain = Brain()
 
 # Robot configuration code
 brain_inertial = Inertial()  # VEX IQ uses GyroSensor for heading
-front_left_motor = Motor(Ports.PORT6)
-front_right_motor = Motor(Ports.PORT12, True)
-back_left_motor = Motor(Ports.PORT1)
-back_right_motor = Motor(Ports.PORT7, True)
+front_left_motor = Motor(Ports.PORT6, True)
+front_right_motor = Motor(Ports.PORT5)
+back_left_motor = Motor(Ports.PORT2, True)
+back_right_motor = Motor(Ports.PORT4)
 controller = Controller()
 
 brain_inertial.calibrate()
@@ -147,6 +147,16 @@ while True:
         # Call motion profile PID
         forward_cmd, strafe_cmd, turn_cmd = move_to_target(x, y, heading_deg, target_x, target_y, target_heading, dt)
 
+        # Cap total translation velocity at 50%
+        max_vel = 50.0
+        vel_mag = math.sqrt(forward_cmd**2 + strafe_cmd**2)
+        if vel_mag > max_vel:
+            scale = max_vel / vel_mag
+            forward_cmd *= scale
+            strafe_cmd *= scale
+        # Cap turn velocity to half
+        turn_cmd *= 0.5
+
         # Field-centric to motor speeds
         fl_speed = forward_cmd + strafe_cmd + turn_cmd
         fr_speed = forward_cmd - strafe_cmd - turn_cmd
@@ -184,6 +194,16 @@ while True:
         field_strafe  = -axis_a_pos * math.sin(heading_rad) + axis_b_pos * math.cos(heading_rad)
 
         if abs(field_forward) + abs(field_strafe) + abs(axis_c_pos) > dead_band:
+            # Cap total translation velocity at 50%
+            max_vel = 50.0
+            vel_mag = math.sqrt(field_forward**2 + field_strafe**2)
+            if vel_mag > max_vel:
+                scale = max_vel / vel_mag
+                field_forward *= scale
+                field_strafe *= scale
+            # Cap turn velocity to half
+            axis_c_pos *= 0.5
+
             fl_speed = field_forward + field_strafe + axis_c_pos
             fr_speed = field_forward - field_strafe - axis_c_pos
             bl_speed = field_forward - field_strafe + axis_c_pos
