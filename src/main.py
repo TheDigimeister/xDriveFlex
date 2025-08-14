@@ -85,11 +85,23 @@ brain = Brain()
 
 # Robot configuration code
 brain_inertial = Inertial()  # VEX IQ uses GyroSensor for heading
+
 front_left_motor = Motor(Ports.PORT6, True)
 front_right_motor = Motor(Ports.PORT5)
 back_left_motor = Motor(Ports.PORT2, True)
 back_right_motor = Motor(Ports.PORT4)
+
+left_arm_motor = Motor(Ports.PORT1, True)
+right_arm_motor = Motor(Ports.PORT3)
+
 controller = Controller()
+
+front_left_motor.set_stopping(BRAKE)
+front_right_motor.set_stopping(BRAKE)
+back_left_motor.set_stopping(BRAKE)
+back_right_motor.set_stopping(BRAKE)
+left_arm_motor.set_stopping(BRAKE)
+right_arm_motor.set_stopping(BRAKE)
 
 brain_inertial.calibrate()
 while brain_inertial.is_calibrating(): wait(50)
@@ -219,6 +231,11 @@ while True:
             back_left_motor.set_velocity(0)
             back_right_motor.set_velocity(0)
 
+            front_left_motor.stop()
+            front_right_motor.stop()
+            back_left_motor.stop()
+            back_right_motor.stop()
+
         front_left_motor.spin(FORWARD)
         front_right_motor.spin(FORWARD)
         back_left_motor.spin(FORWARD)
@@ -252,5 +269,23 @@ while True:
         brain.screen.print_at(" X: {:.2f} in".format(x), x=0, y=20)
         brain.screen.print_at(" Y: {:.2f} in".format(y), x=0, y=40)
         brain.screen.print_at(" Heading: {:.1f} deg".format(heading_deg), x=0, y=60)
+
+        # Arm code
+
+        if controller.buttonRUp.pressing():
+            left_arm_motor.spin(REVERSE)
+            right_arm_motor.spin(REVERSE)
+        elif controller.buttonRDown.pressing():
+            left_arm_motor.spin(FORWARD)
+            right_arm_motor.spin(FORWARD)
+        elif controller.buttonLUp.pressing():
+            left_arm_motor.spin(FORWARD)
+            right_arm_motor.spin(REVERSE)
+        elif controller.buttonLDown.pressing():
+            left_arm_motor.spin(REVERSE)
+            right_arm_motor.spin(FORWARD)
+        else:
+            left_arm_motor.stop()
+            right_arm_motor.stop()
 
         wait(int(dt * 1000))
